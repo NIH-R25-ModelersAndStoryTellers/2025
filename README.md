@@ -1,2 +1,47 @@
-# 2025
-2025 Transdisciplinary Training to Advance Community Health Intervention Research
+# Modelers and Storytellers
+
+This page contains the data science tutorials for the 2025 *Modelers and Storytellers: Transdisciplinary Training to Advance Community Health Intervention Research* project.
+
+This training is hosted by the [UCLA Fielding School of Public Health (FSPH)](https://ph.ucla.edu/) and sponsored by the National Institute of Child Health and Human Development (NICHD). Principal investigators are Drs. Roch Nianogo, Michael Prelip, May Wang, and Hua Zhou.
+
+## Data Science Module, June 24-26, 2025
+
+Run tutorials in RStudio: [Posit Cloud](TODO)
+
+Run tutorials in Jupyter notebooks (can be slow): [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/NIH-R25-ModelersAndStoryTellers/binder-sandbox.git/main?urlpath=git-pull?repo=https://github.com/NIH-R25-ModelersAndStoryTellers/2025.git)
+
+### Tuesday, June 24
+
+| Time          | Topic            | Instructor          |
+|:----------------------|:------------------------|:------------------------|
+| 8:30a-10:10a  | Data science overview, data source, intro. to R \[[tutorial](https://nih-r25-modelersandstorytellers.github.io/2025/data-science-tutorials/01-dsintro/dsintro.html)\] | Dr. Hua Zhou |
+| 10:10a-10:20a | Break  |                     |
+| 10:20a-11:50a | CPS-FSS data: ingest, wrangle, visualize \[[tutorial](https://nih-r25-modelersandstorytellers.github.io/2025/data-science-tutorials/02-wrangle/wrangle.html)\] | Dr. Hua Zhou |
+| 11:50a-12:20p  | Lunch Break  |                     |
+| 12:20p-1:50p   | Predictive modeling (logistic regression) \[[tutorial](https://nih-r25-modelersandstorytellers.github.io/2025/data-science-tutorials/03-logit/logit.html)\]  | Dr. Hua Zhou |
+| 1:50p-2:00p   | Break |  |
+| 2:00p-2:30p   | Wrap-up & Closing & Group Work | Emily Abrahams |
+
+### Wednesday, June 25
+
+| Time          | Topic            | Instructor          |
+|:----------------------|:------------------------|:------------------------|
+| 8:30a-10:10a  | Predictive modeling (random forest) \[[tutorial](https://nih-r25-modelersandstorytellers.github.io/2025/data-science-tutorials/04-rf/rf.html)\], Predictive modeling (food recognition) \[[tutorial](https://nih-r25-modelersandstorytellers.github.io/2025/data-science-tutorials/07-foodimg/foodimg.html)\] | Dr. Hua Zhou |
+| 10:10a-10:20a | Break  |                     |
+| 10:20a-11:50a | Policy evaluation by DML \[[tutorial](https://nih-r25-modelersandstorytellers.github.io/2025/data-science-tutorials/05-dml/dml.html)\] | Dr. Hua Zhou |
+| 11:50a-12:20p  | Lunch Break  |                     |
+| 12:20p-1:50p   | TBD  | Guest Speaker |
+| 1:50p-2:00p   | Break |  |
+| 2:00p-2:30p   | Wrap-up & Closing & Group Work | Emily Abrahams |
+
+### Thursday, June 26
+
+| Time          | Topic            | Instructor          |
+|:----------------------|:------------------------|:------------------------|
+| 8:30a-10:10a  | TBD | Dr. Roch Nianogo |
+| 10:10a-10:20a | Break  |                     |
+| 10:20a-11:50a | TBD | Dr. Roch Nianogo |
+| 11:50a-12:20p  | Lunch Break  |                     |
+| 12:20p-1:50p   | TBD  | Dr. Roch Nianogo |
+| 1:50p-2:00p   | Break |  |
+| 2:00p-2:30p   | Wrap-up & Closing & Group Work | Emily Abrahams |
