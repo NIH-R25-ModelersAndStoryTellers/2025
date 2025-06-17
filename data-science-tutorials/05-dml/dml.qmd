@@ -1,0 +1,390 @@
+---
+title: "Policy Evaluation by Double Machine Learning"
+author: "Dr. Roch Nianogo, Bowen Zhang, Dr. Hua Zhou"
+format:
+  html:
+    theme: cosmo
+    embed-resources: true
+    number-sections: true
+    toc: true
+    toc-depth: 4
+    toc-location: left
+    code-fold: false
+    link-external-icon: true
+    link-external-newwindow: true
+knitr:
+  opts_chunk: 
+    cache: false    
+    echo: true
+    fig.align: 'center'
+    # fig.width: 6
+    # fig.height: 4
+    message: FALSE
+jupyter:
+    kernelspec:
+        name: "ir44"
+        language: "R"
+        display_name: "R 4.4.2"    
+comments:
+  hypothesis: true
+---
+
+```{r}
+#| code-fold: true
+#| output: false
+
+library(tidyverse)
+library(tidycensus)
+census_api_key("4cf445b70eabd0b297a45e7f62f52c27ba3b5cae",
+               install = TRUE, overwrite = TRUE)
+Sys.setenv("CENSUS_KEY" = "4cf445b70eabd0b297a45e7f62f52c27ba3b5cae")
+
+library(censusapi)
+library(data.table)
+library(DoubleML)
+library(gtsummary)
+library(mlr3)
+library(ranger)
+library(tidymodels)
+```
+
+## Roadmap
+
+::: {style="text-align: center;"}
+![Data Science Diagram](../01-dsintro/data-science.png)
+:::
+
+## Causal inference
+
+-   You've done tremendous work carrying out an intervention program. You want to demonstrate to stakeholders (government, funding agencies, etc) that your program "works."
+
+    -   You compared the average of [Food Security Rasch Scale Score in the past 30 days](https://www.ers.usda.gov/media/8282/short2012.pdf) (higher score indicates lower food security) among program participants versus those not participating our program. We found a significant difference in the averages 😄 But people criticize your analysis as biased 🙁 What could go wrong?
+
+    -   In another try, you ran a multiple linear regression that included the program participation status and many socio-economical variables (race, age, income, region, ...), hoping to adjust for hidden confounding. Then you found that program participation does not significantly improve the food security Rasch score 🙁
+
+    -   Causal inference methods can help more reliably estimate the "treatment effect."
+
+-   Main approaches for causal inference:
+
+    -   **RCT** (randomized controlled trials): gold standard, but impractical in most Community-Based Participatory Research (**CBPR**) with multi-level interventions.
+
+    -   Observational studies under unconfoundedness: matching, regression estimators, inverse-propensity-score weighting.
+
+    -   Observational studies without unconfoundedness: instrumental variable, difference-in-differences (DiD), synthetic control, regression discontinuity designs.
+
+## Partially linear regression and interactive regression model
+
+### Partially linear regression (PLR)
+
+Partially linear regression (PLR) model introduced by Robinson (1988):
+
+::: {style="text-align: center;"}
+<img src="./PartialLR.drawio.png" alt="PLR" width="300"/>
+:::
+
+$$
+\begin{aligned}
+Y &= D \theta_0 + g_0(X) + U, &E[U | X, D] = 0, \\
+D &= m_0(X) + V, &E[V | X] = 0.
+\end{aligned}
+$$
+
+Here, $Y$ is the outcome variable, $D$ is the policy/treatment variable of interest, vector
+
+$$
+X = (X_1, \ldots, X_p)
+$$
+
+consists of other control, and $U$ and $V$ are disturbances terms. The first equation is the main equation, and $\theta_0$ is the main regression coefficient that we would like to infer. If $D$ is exogenous conditional on controls X, $\theta_0$ has the interpretation of the treatment effect parameter or ‘lift’ parameter in business applications. The second equation keeps track of confounding, namely the dependence of the treatment variable on controls.
+
+The confounding factors $X$ affect the policy variable $D$ via the function $m_0(X)$ and the outcome variable via the function $g_0(X)$. These function does not need to be linear! We can take advantage of the great prediction performance of machine learning techniques to estimate these functions.
+
+Naive application of machine learning methods directly to two equations may have a very high bias.
+
+::: {style="text-align: center;"}
+<img src="./bias.jpg" alt="bias" width="700"/>
+:::
+
+Remarks:
+
+1.  The policy variable $D$ can be either binary or continuous (dosage).
+
+2.  The policy variable $D$ can be multi-dimensional (multi-level intervention: food pantry, mobile clinics, referral system, education classes, ads.).
+
+### Interactive regression model (IRM)
+
+We consider estimation of average treatment effects when treatment effects are fully heterogeneous, i.e., the response curves under control and treatment can be different nonparametric functions, and the treatment variable is binary, $D \in \{0,1\}$. We consider vectors $(Y,D,X)$ such that
+
+$$
+\begin{aligned}
+Y &= g_0(D,X) + U, &E[U | X, D] = 0, \\
+D &= m_0(X) + V, &E[V | X] = 0.
+\end{aligned}
+$$
+
+Since $D$ is not additively separable, this model is more general than the partially linear model for the case of binary $D$. A common target parameter of interest in this model is the average treatment effect (ATE).
+
+$$
+\theta_0 = E[g_0(1,X) - g_0(0,X)].
+$$
+
+The confounding factors $X$ affect the policy variable via the propensity score $m_0(X)$ and the outcome variable via the function $g_0(X)$. Both of these functions are unknown and potentially complex, and we can employ ML methods to learn them.
+
+The general idea for identification of $θ_0$ using the IRM is similar. Once we are able to account for all confounding variables $X$ in our analysis, we can consistently estimate the causal parameter $\theta_0$. A difference to the PLR refers to assumptions on the functional form of the main regression equation. Whereas it is assumed that the effect of $D$ on $Y$ in the PLR model is additively separable, the IRM model comes with less restrictive assumptions.
+
+### Basic Idea behind Double Machine Learning for the PLR Model
+
+The basic idea behind double machine learning method is to use machine learning methods to estimate the nuisance functions $m_0(X)$ and $g_0(X)$ and then use these estimates to construct a doubly robust estimator of the target parameter $\theta_0$. The doubly robust estimator is consistent if either the machine learning estimator of $m_0(X)$ or $g_0(X)$ is consistent.
+
+Reference: [Chernozhukov, V., Chetverikov, D., Demirer, M., Duflo, E., Hansen, C., Newey, W., and Robins, J. (2018). Double/debiased machine learning for treatment and structural parameters. The Econometrics Journal, 21(1), C1-C68.](https://onlinelibrary.wiley.com/doi/abs/10.1111/ectj.12097)
+
+#### Idea 1: Neyman orthogonal score
+
+The Neyman orthogonal score is orthogonal to the nuisance parameter in the sense that its expectation is zero. The Neyman orthogonal score is a key concept in the theory of efficient estimation of the target parameter in semiparametric models.
+
+The PLR model can be rewritten in the following residualized form:
+
+$$
+\begin{aligned}
+W &= V\theta_0 + \zeta, &E[\zeta | X, D] = 0, \\
+W &= (Y - \ell_0(X)), &\ell_0(X) = E[Y | X], \\
+V &= (D - m_0(X)), &m_0(X) = E[D | X].
+\end{aligned}
+$$
+
+The variable $W$ and $V$ represent original variables after taking out or **partialling out** the effect of X. Given identification, double machine learning for a PLR proceeds as follows:
+
+1.  Estimate $\ell_0$ and $m_0$ by sloving two problems of predicting $Y$ and $D$ using $X$, using any generic machine learning method, giving us estimated residuals $$
+    \begin{aligned}
+    \hat{W} &= Y - \hat{\ell}_0(X), \\
+    \hat{V} &= D - \hat{m}_0(X).
+    \end{aligned}
+    $$
+
+    The residuals should be of a cross-validated form to avoid overfitting.
+
+2.  Estimate $\theta_0$ by regressing the residuals $\hat{W}$ on $\hat{V}$. Use the conventional inference for this regression estimator, ignoring the estimation error in $\hat{W}$ and $\hat{V}$.
+
+#### Idea 2: Sample splitting
+
+The key idea behind sample splitting is to split the sample into two parts, one for estimating the nuisance functions and the other for estimating the causal parameter. This is also known as **cross-fitting**.
+
+## Example: causal effect of WIC on food security
+
+### Background
+
+The Special Supplemental Nutrition Program for Women, Infants, and Children ([WIC](https://www.fns.usda.gov/wic)) is a federally funded nutrition program that provides grants to States to support distribution of supplemental foods, health care referrals, and nutrition education to safeguard the health of low-income pregnant, breastfeeding, and non-breastfeeding postpartum women; for infants in low-income families; and for children younger than age 5 in low-income families and who are found to be at nutritional risk.
+
+In 2020, WIC served over 6.2 million participants per month at an average monthly cost for food (after rebates to WIC from manufacturers) of about \$38 per person. Many household under low food security benefit from WIC. We are curious to know the causal effect of WIC on food security status.
+
+### Data preparation
+
+We use the 2020 Current Population Survey (CPS) Food Security Supplement (FSS) data to estimate the causal effect of WIC on food security status. We screen the eligible household (below 185 percent of the poverty threshold, with children under age 5 or women aged 15-45). Besides, we set another eligibility criteria that the household must have at least 1 food insecure event in the past 30 days, because we are interested in the causal effect of WIC on food security status among households that suffered from food insecurity.
+
+We include the following variables in our analysis:
+
+-   `HRFS30D4`: Food Security Rasch Scale Score in the past 30 days (100 - 1400). Higher score indicates lower food security.
+
+-   `HESP8`: WIC participation status (1: Yes, 2: No).
+
+-   `HRNUMHOU`: Number of people in the household.
+
+-   `HRHTYPE`: Household type.
+
+-   `GEREG`: Geographic region.
+
+-   `PRCHLD`: Presence of children in the household.
+
+-   `PRTAGE`: Age of the reference person.
+
+-   `PEEDUCA`: Education level.
+
+-   `PEMLR`: Employment status.
+
+-   `RACE`: recoded from `PTDTRACE` and `PEHSPNON`.
+
+-   `HEFAMINC`: Family income (take median of each class).
+
+```{r}
+fss_20_data <- censusapi::getCensus(
+  name = "cps/foodsec/dec",
+  vintage = 2020,
+  vars = c("HRHHID", "HRHHID2", "HRNUMHOU",
+           "HRHTYPE", "GEREG", "HESP8",
+           "PRTAGE", "PEEDUCA", "PRCHLD",
+           "PEMLR", "PTDTRACE", "PEHSPNON",
+           "HEFAMINC", "HRFS30D1", "HHSUPWGT",
+           "PERRP", "HRFS30D4")
+  ) |>
+  as_tibble() |>
+  filter(PERRP %in% c(40, 41),
+         HRFS30D1 %in% c(1, 2, 3),
+         PEMLR %in% c(1, 2, 3, 4, 5, 6, 7),
+         HESP8 %in% c(1, 2),
+         HRFS30D4 != -6) |>
+  mutate(HRFS30D1 = factor(HRFS30D1,
+                           levels = c("1", "2", "3"),
+                           labels = c("Food Security",
+                                      "Low Food Security",
+                                      "Very Low Food Security")),
+         HESP8 = ifelse(HESP8 == 1, 1, 0) |> 
+           factor(levels = c(0, 1), labels = c("NoWIC", "WIC")),
+         HRNUMHOU = as.numeric(HRNUMHOU),
+         HHSUPWGT = as.numeric(HHSUPWGT),
+         HRHTYPE = cut(as.numeric(HRHTYPE), breaks = c(0, 2, 5, 8, 10),
+                       labels = c("MarriedFamily", "UnmarriedFamily",
+                                  "Individual", "GroupQuarters")) |> fct_drop(),
+         GEREG = factor(GEREG, levels = c(1, 2, 3, 4),
+                        labels = c("Northeast", "Midwest", "South", "West")),
+         PEEDUCA = cut(as.numeric(PEEDUCA), breaks = c(30, 38, 42, 46),
+                       labels = c("LessThanHighSchool",
+                                  "HighSchoolOrAssociateDegree",
+                                  "CollegeOrHigher")),
+         PEMLR = cut(as.numeric(PEMLR), breaks = c(0, 2, 4, 7),
+                     labels = c("Employed", "NotEmployed",
+                                "NotInLaborForce")),
+         PRTAGE = as.numeric(PRTAGE),
+         PEHSPNON = factor(PEHSPNON, levels = c(2, 1),
+                           labels = c("Non-Hispanic", "Hispanic")),
+         PTDTRACE = fct_recode(as.factor(PTDTRACE),
+                          "White" = "1" ,
+                          "Black" = "2",
+                          "AIAN" = "3",
+                          "Asian" = "4",
+                          "HPI" = "5") |>
+           fct_other(keep = c("White", "Black", "AIAN", "Asian", "HPI")),
+         PRCHLD = ifelse(PRCHLD == 0, "NoChildren", "Children") |> 
+           as_factor() |> relevel(ref = "NoChildren"),
+         HEFAMINC = case_when(HEFAMINC == 1 ~ 2500,
+                              HEFAMINC == 2 ~ 6250,
+                              HEFAMINC == 3 ~ 8750,
+                              HEFAMINC == 4 ~ 11250,
+                              HEFAMINC == 5 ~ 13750,
+                              HEFAMINC == 6 ~ 17500,
+                              HEFAMINC == 7 ~ 22500,
+                              HEFAMINC == 8 ~ 27500,
+                              HEFAMINC == 9 ~ 32500,
+                              HEFAMINC == 10 ~ 37500,
+                              HEFAMINC == 11 ~ 45000,
+                              HEFAMINC == 12 ~ 55000,
+                              HEFAMINC == 13 ~ 67500,
+                              HEFAMINC == 14 ~ 87500,
+                              HEFAMINC == 15 ~ 125000,
+                              HEFAMINC == 16 ~ 175000),
+         HEFAMINC = as.numeric(HEFAMINC),
+         HRFS30D4 = as.numeric(HRFS30D4),
+  ) |>
+  print()
+```
+
+```{r}
+fss_20_data |>
+  select(HRFS30D4, HESP8, HRNUMHOU, HRHTYPE, GEREG, PRTAGE,
+         PEEDUCA, PRCHLD, PEMLR, HEFAMINC, PEHSPNON) |>
+  tbl_summary()
+```
+
+### Two-sample t-test (simple linear regression)
+
+```{r}
+lm(HRFS30D4 ~ factor(HESP8), data = fss_20_data) |>
+  tbl_regression() |>
+  bold_labels() |>
+  bold_p(t = 0.05)
+```
+
+### Multiple linear regression
+
+```{r}
+fit <- lm(HRFS30D4 ~ factor(HESP8) + HRNUMHOU + HRHTYPE + GEREG + PRTAGE +
+            PEEDUCA + PRCHLD + PEMLR + HEFAMINC + PEHSPNON, data = fss_20_data)
+fit
+```
+
+```{r}
+fit |>
+  tbl_regression() |>
+  bold_labels() |>
+  bold_p(t = 0.05)
+```
+
+### DoubleML workflow
+
+The Python and R package [DoubleML](https://docs.doubleml.org/) provide an implementation of the double / debiased machine learning framework of [Chernozhukov et al. (2018)](https://academic.oup.com/ectj/article/21/1/C1/5056401). The R package is built on top of mlr3 and the mlr3 ecosystem (Lang et al., 2019).
+
+::: {style="text-align: center;"}
+<img src="https://docs.doubleml.org/stable/logo.png" alt="DMLlogo" width="300"/>
+:::
+
+-   Data-backend
+
+    we initialize the data-backend and thereby declare the role of the outcome, the treatment, and the confounding variables.
+
+```{r}
+doubleML_data <- fss_20_data |>
+  mutate(HESP8 = ifelse(HESP8 == "WIC", 1, 0)) |>
+  data.table()
+
+obj_dml_data <- DoubleMLData$new(
+  doubleML_data,
+  y_col = "HRFS30D4",
+  d_cols = "HESP8",
+  x_cols = c("HRNUMHOU", "HRHTYPE", "GEREG", "PRCHLD", "PRTAGE",
+             "PEEDUCA", "PEMLR", "HEFAMINC", "PEHSPNON")
+)
+
+obj_dml_data
+```
+
+-   Choose causal model
+
+    There are several models currently implemented in DoubleML which differ in terms of the underlying causal structure. In this example, we use the interactive regression model (IRM).
+
+::: {style="text-align: center;"}
+<img src="causal.jpg" alt="causalmodel" width="700"/>
+:::
+
+-   ML Methods
+
+    we can specify the machine learning tools used for estimation of the nuisance parts. We can generally choose any learner from mlr3 ecosystem in R. In this example, we use random forest for both the main equation and the confounding equation.
+
+```{r}
+set.seed(2024)
+
+learner_g <- lrn("regr.ranger", num.trees = 500, min.node.size = 2,
+                 max.depth = 5)
+learner_classif_m <- lrn("classif.ranger", num.trees = 500,
+                         min.node.size = 2, max.depth = 5)
+```
+
+-   DML specifications
+
+    we initialize and parametrize the model object which will later be used to perform the estimation. we specify the resampling, the dml algorithm and the score function.
+
+```{r}
+set.seed(2024)
+
+doubleml_mod <- DoubleMLIRM$new(
+  obj_dml_data,
+  ml_g = learner_g, ml_m = learner_classif_m,
+  score = "ATE", dml_procedure = "dml2",
+  n_folds = 5, n_rep = 1
+)
+
+doubleml_mod
+```
+
+-   Estimation
+
+```{r}
+doubleml_mod$fit()
+doubleml_mod$summary()
+doubleml_mod$confint()
+```
+
+## Feedback
+
+```{=html}
+<iframe src="https://app.sli.do/event/aGHTYktNjhMJFDCe92w9Rt/embed/polls/5187fffc-a7a4-49aa-bb47-486a580d09ef" width="75%" height="400" data-external="1"></iframe>
+```
+[Slido](https://app.sli.do/event/aGHTYktNjhMJFDCe92w9Rt/embed/polls/5187fffc-a7a4-49aa-bb47-486a580d09ef)
