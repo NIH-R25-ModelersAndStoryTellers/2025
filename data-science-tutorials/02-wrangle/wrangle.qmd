@@ -22,9 +22,9 @@ knitr:
     message: FALSE
 jupyter:
     kernelspec:
-        name: "ir43"
+        name: "ir44"
         language: "R"
-        display_name: "R 4.3.2"    
+        display_name: "R 4.4.2"
 comments:
   hypothesis: true    
 ---
