@@ -74,7 +74,7 @@ All course materials are available on [GitHub](https://github.com/NIH-R25-Modele
 
 -   read the static [tutorial pages](https://github.com/NIH-R25-ModelersAndStoryTellers/2025), make comments, and ask questions; or
 
--   interactively run `qmd` files in RStudio on [Posit Cloud](???) (sign up for a free account); or
+-   interactively run `qmd` files in RStudio on [Posit Cloud](https://posit.cloud/spaces/663650/join?access_code=XXZ_idAZxOIejKiar026U8x1hzvUb2FeKZMkOvz8) (sign up for a free account); or
 
 -   interactively run `ipynb` files in Jupyter Notebook on [Binder](https://mybinder.org/v2/gh/NIH-R25-ModelersAndStoryTellers/binder-sandbox.git/main?urlpath=git-pull?repo=https://github.com/NIH-R25-ModelersAndStoryTellers/2025.git) (can be slow)
 
