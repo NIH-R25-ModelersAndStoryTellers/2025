@@ -1,6 +1,6 @@
 ---
 title: "Data Science and R"
-author: "Dr. Roch Nianogo Bowen Zhang, and Dr. Hua Zhou"
+author: "Dr. Roch Nianogo, Bowen Zhang, and Dr. Hua Zhou"
 format:
   html:
     theme: cosmo
