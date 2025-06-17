@@ -1,0 +1,519 @@
+---
+title: "Predictive Modeling - Logistic Regression and Regularization"
+author: "Dr. Roch Nianogo, Bowen Zhang, Dr. Hua Zhou"
+format:
+  html:
+    theme: cosmo
+    embed-resources: true
+    number-sections: true
+    toc: true
+    toc-depth: 4
+    toc-location: left
+    code-fold: false
+    link-external-icon: true
+    link-external-newwindow: true
+knitr:
+  opts_chunk: 
+    cache: false    
+    echo: true
+    fig.align: 'center'
+    # fig.width: 6
+    # fig.height: 4
+    message: FALSE
+jupyter:
+    kernelspec:
+        name: "ir43"
+        language: "R"
+        display_name: "R 4.3.2"    
+comments:
+  hypothesis: true
+---
+
+```{r}
+#| code-fold: true
+#| output: false
+
+library(tidyverse)
+library(tidycensus)
+census_api_key("4cf445b70eabd0b297a45e7f62f52c27ba3b5cae",
+               install = TRUE, overwrite = TRUE)
+Sys.setenv("CENSUS_KEY" = "4cf445b70eabd0b297a45e7f62f52c27ba3b5cae")
+
+library(censusapi)
+library(glmnet)
+library(gtsummary)
+library(knitr)
+library(maps)
+library(pROC)
+library(tidymodels)
+library(tigris)
+```
+
+## Roadmap
+
+::: {style="text-align: center;"}
+![Data Science Diagram](../01-dsintro/data-science.png)
+:::
+
+In the last lecture, we focused on data wrangling (import, tidy, transform, visualize). Now we progress to the modeling part. In this lecture, we focus on predictive modeling using machine learning methods (logistic, random forest, neural network, ...). In the next lecture, we focus on policy evaluation using double machine learning.
+
+```{=html}
+<iframe src="https://app.sli.do/event/aGHTYktNjhMJFDCe92w9Rt/embed/polls/c943bd98-f0a6-4308-b9ee-ab93ea242a92" width="75%" height="500" data-external="1"></iframe>
+```
+[Slido](https://app.sli.do/event/aGHTYktNjhMJFDCe92w9Rt/embed/polls/c943bd98-f0a6-4308-b9ee-ab93ea242a92)
+
+## Learning objectives
+
+Supervised vs unsuperversed learning, logistic regression, ROC curve, overfitting, regularization, L1 and L2 penalty, elastic net, cross-validation, hyperparameter tuning, model evaluation, and interpretation.
+
+## Machine learning overview
+
+::: {style="text-align: center;"}
+<img src="https://www.frontiersin.org/files/Articles/815717/fbuil-08-815717-HTML/image_m/fbuil-08-815717-g003.jpg" alt="Machine Learning"/>
+:::
+
+### Supervised vs unsupervised learning
+
+-   **Supervised learning**: input(s) -\> output.
+
+    -   Prediction (or **regression**): the output is continuous (income, weight, bmi, ...).
+    -   **Classification**: the output is categorical (disease or not, pattern recognition, ...).
+
+-   **Unsupervised learning**: no output. We learn relationships and structure in the data.
+
+    -   Clustering.
+    -   Dimension reduction.
+    -   Embedding.
+
+-   In modern applications, the line between supervised and unsupervised learning is blurred.
+
+    -   Matrix completion: Netflix problem. Both supervise and unsupervised techniques are used.
+
+    -   Large language model (LLM) combines supervised learning and reinforcement learning.
+
+## Logistic regression
+
+We load the Food Security Supplement household data we curated earlier. Our goal is to predict food insecurity status using household's socio-economical status.
+
+```{r}
+data_clean <- read_rds("../02-wrangle/fss21.rds") |>
+  print()
+```
+
+### Why not linear regression?
+
+We are interested in predicting whether a household will be food insecure, on the basis of household size, marital status, have children or not, geographical region, education level, employment status, and race.
+
+The response `HRFS12M1_binary` falls into one of two categories, `Food Insecure` (1) or `Food Secure` (0). Rather than modeling this response $Y$ directly, logistic regression models the probability that $Y$ belongs to a particular category.
+
+::: {style="text-align: center;"}
+<img src="./4_2.jpg" alt="default" width="700"/>
+:::
+
+$$
+Y_i = \begin{cases}
+1 & \text{with probability } p_i \\
+0 & \text{with probability } 1 - p_i
+\end{cases}
+$$
+
+The parameter $p_i = \mathbb{E}(Y_i)$ will be related to the predictors $\mathbf{x}_i$ via
+
+$$
+p_i = \frac{e^{\eta_i}}{1 + e^{\eta_i}},
+$$ where $\eta_i$ is the linear predictor (or systematic component)
+
+$$ 
+\eta_i = \mathbf{x}_i^T \boldsymbol{\beta} = \beta_0 + \beta_1 x_{i1} + \beta_2 x_{i2} + \dots + \beta_q x_{iq}.
+$$ In other words, logistic regression models the **log-odds** of the probability of success as a linear function of the predictors
+
+$$
+\log \left( \frac{p}{1-p} \right) = \log(\text{odds}) = \beta_0 + \beta_1  x_1 + \beta_2  x_2 + \dots + \beta_q  x_q. 
+$$
+
+Therefore $\beta_1$ can be interpreted as a unit increase in $x_1$ with other predictors held fixed increases the log-odds of success by $\beta_1$, or increase the odds of success by a factor of $e^{\beta_1}$.
+
+### Logistic regression on food security data
+
+To further investigate the factors that are associated with food insecurity, we can use logistic regression to model the probability of a household being in low food security.
+
+```{r}
+# Fit logistic regression
+logit_model <- glm(
+  # All predictors except HRFS12M1 and HHSUPWGT
+  HRFS12M1_binary ~ . - HRFS12M1 - HHSUPWGT,
+  data = data_clean, 
+  family = "binomial"
+  )
+logit_model
+```
+
+`gtsummary` package offers a nice summary of the model
+
+```{r}
+logit_model |>
+  tbl_regression() |>
+  bold_labels() |>
+  bold_p(t = 0.05)
+```
+
+Importance of each predictor can be evaluated by the analysis of variance (ANOVA) test.
+
+```{r}
+anova(logit_model, test = "Chisq")
+```
+
+### ROC curve
+
+![](https://research.aimultiple.com/wp-content/uploads/2019/07/positive-negative-true-false-matrix-1648x600.png.webp){fig-align="center"}
+
+If we want to use this model for prediction, we need to evaluate its performance. There are many metrics related to classification models, such as accuracy, precision, recall, sensitivity, specificity, ...
+
+$$
+\begin{aligned}
+\text{Accuracy} &= \frac{TP + TN}{TP + TN + FP + FN} \\
+\text{Precision} &= \frac{TP}{TP + FP} \\
+\text{Recall} &= \frac{TP}{TP + FN} \\
+\text{Sensitivity} &= \frac{TP}{TP + FN} \\
+\text{Specificity} &= \frac{TN}{TN + FP}
+\end{aligned}
+$$
+
+```{r}
+pred_prob <- predict(logit_model, type = "response")
+
+# Set the threshold 0.5
+threshold <- 0.5
+
+predicted_class <- ifelse(pred_prob > threshold, 1, 0) |> as.factor()
+actual_class <- data_clean$HRFS12M1_binary
+
+ctb_50 <- table(Predicted = predicted_class, Actual = actual_class)
+
+# Set the threshold 0.1
+threshold <- 0.1
+
+predicted_class <- ifelse(pred_prob > threshold, 1, 0) |> as.factor()
+actual_class <- data_clean$HRFS12M1_binary
+
+ctb_10 <- table(Predicted = predicted_class, Actual = actual_class)
+
+list(threshold50 = ctb_50, threshold10 = ctb_10)
+
+```
+
+If we set different thresholds, the confusion matrix will change, thus the metrics will change.
+
+```{r}
+# Calculate metrics under different thresholds
+calc_metrics <- function(ct) {
+  c(Accuracy = (ct[1, 1] + ct[2, 2]) / sum(ct),
+    Sensitivity = ct[2, 2] / sum(ct[, 2]),
+    Specificity = ct[1, 1] / sum(ct[, 1]),
+    Precision = ct[2, 2] / sum(ct[2, ]))
+}
+
+metrics50 <- calc_metrics(ctb_50)
+metrics10 <- calc_metrics(ctb_10)
+
+data.frame(threshold50 = metrics50, threshold10 = metrics10) |>
+  t() |>
+  round(2) |>
+  kable()
+
+```
+
+If we set the threshold to 0.5, the accuracy is 0.90, which is quite higher than setting threshold to 0.1. However, the sensitivity is only 0.02, which means the model can only capture 2% of the households in low food security. In contrast, if we set the threshold to 0.1, the sensitivity is 0.71, which means the model can capture 71% of the households in low food security. However, the specificity decreases to 0.74. This trade-off is common in classification models.
+
+Therefore, we need a metric that can evaluate the model's performance under different thresholds. The ROC curve is a good choice. The **ROC** curve is a popular graphic for simultaneously displaying the two types of errors for all possible thresholds. The name “ROC” is historic, and comes from communications theory. It is an acronym for receiver operating characteristics.
+
+The overall performance of a classifier, summarized over all possible thresholds, is given by the area under the (ROC) curve (**AUC**). An ideal ROC curve will hug the top left corner, so the larger area under the AUC the better the classifier. We expect a classifier that performs no better than chance to have an AUC of 0.5.
+
+There is another similar plot called the **precision-recall curve**, which sets the x-axis as recall and the y-axis as precision. The classifier that has a higher AUC on the ROC curve will always have a higher AUC on the PR curve as well.
+
+```{r}
+data_clean <- data_clean |>
+  mutate(prob = predict(logit_model, type = "response"))
+
+roc_data <- roc(data_clean$HRFS12M1_binary, data_clean$prob)
+
+ggroc(roc_data, legacy.axes = TRUE) +
+  labs(title = "ROC Curve for Logistic Regression Model",
+       x = "1 - Specificity",
+       y = "Sensitivity") +
+  theme_minimal() +
+  annotate("text", x = 0.5, y = 0.5,
+           label = paste("AUC =", round(auc(roc_data), 3)))
+```
+
+The logistic regression model has an AUC of `{r} round(auc(roc_data), 3)`, which indicates that the model has a reasonably good discrimination ability. However, if we want to evaluate the model's predictive performance, simply fitting models and calculating AUC is not enough.
+
+## Assessing model accuracy
+
+### Measuring the quality of fit
+
+In order to evaluate the performance of a statistical learning method on a given data set, we need some way to measure how well its predictions actually match the observed data. That is, we need to quantify the extent to which the predicted response value for a given observation is close to the true response value for that observation. In the regression setting, the most commonly-used measure is the mean squared error (MSE), given by
+
+$$
+\text{MSE} = \frac{1}{n} \sum_{i=1}^{n} (y_i - \hat{f}(x_i))^2.
+$$ The MSE will be small if the predicted responses are very close to the true responses, and will be large if for some of the observations, the predicted and true responses differ substantially.
+
+The MSE is computed using the training data that was used to fit the model. But in general, we do not really care how well the method works training on the training data. Rather, we are interested in the accuracy of the predictions that we obtain when we apply our method to previously unseen test data. We’d like to select the model for which the average of the test MSE is as small as possible.
+
+::: {style="text-align: center;"}
+<img src="./2_9.jpg" alt="default" width="700"/>
+:::
+
+As model flexibility increases, training MSE will decrease, but the test MSE may not. When a given method yields a small training MSE but a large test MSE, we are said to be **overfitting** the data.
+
+::: callout-tip
+-   Does it mean simpler models are always better?
+
+**No Free Lunch Theorem** \[David Wolpert, William Macready\]: Any two optimization algorithms are equivalent when their performance is averaged across all possible problems.
+
+::: {style="text-align: center;"}
+<img src="./nfl_train.jpg" alt="default" width="700"/>
+:::
+
+The black points represent the training data. There are two models A and B, in which model B is more flexible than model A.
+
+::: {style="text-align: center;"}
+<img src="./nfl_test.jpg" alt="default" width="700"/>
+:::
+
+The white points represent the test data. In the left panel, model A has a smaller test MSE than model B. In the right panel, model B has a smaller test MSE than model A. Therefore, we cannot say that simpler models are always better.
+:::
+
+In practice, one can usually compute the training MSE with relative ease, but estimating test MSE is considerably more difficult because usually no test data are available. The flexibility level corresponding to the model with the minimal test MSE can vary considerably among data sets. One important method is cross-validation, which is a cross method for estimating test MSE using the training data.
+
+### Cross-validation
+
+K-fold cross-validation randomly divides the set of observations into k groups, or folds, of approximately equal size. The first fold is treated as a validation set, and the method is fit on the remaining k − 1 folds. The mean squared error, $\text{MSE}_1$, is then computed on the observations in the held-out fold. This procedure is repeated k times; each time, a different group of observations is treated as a validation set. This process results in k estimates of the test error, $\text{MSE}_1$, $\text{MSE}_2$,..., $\text{MSE}_k$. The k-fold CV estimate is computed by averaging these values,
+
+$$
+\text{CV}_{(k)} = \frac{1}{k} \sum_{i=1}^{k} \text{MSE}_i.
+$$
+
+::: {style="text-align: center;"}
+<img src="./kfold.jpg" alt="default" width="700"/>
+:::
+
+## Tidymodels overview
+
+-   [tidymodels](https://www.tidymodels.org/) is an ecosystem for:
+
+    1.  Feature engineering: coding qualitative predictors, transformation of predictors (e.g., log), extracting key features from raw variables (e.g., getting the day of the week out of a date variable), interaction terms, ... ([recipes](https://recipes.tidymodels.org/reference/index.html) package);
+    2.  Build and fit a model ([parsnip](https://parsnip.tidymodels.org/index.html) package);
+    3.  Evaluate model using resampling (such as cross-validation) ([tune](https://tune.tidymodels.org/) and [dial](https://dials.tidymodels.org/) packages);
+    4.  Tuning model parameters.
+
+<p align="center">
+
+![](https://rviews.rstudio.com/2020/04/21/the-case-for-tidymodels/tidymodels.png){fig-align="center" height="300"}
+
+</p>
+
+-   tidymodels is the R analog of [sklearn.pipeline](https://scikit-learn.org/stable/modules/generated/sklearn.pipeline.Pipeline.html) in Python and [MLJ.jl](https://juliaai.github.io/MLJ.jl/stable/) in Julia.
+
+::: panel-tabset
+#### R
+
+Supported models in tidymodels ecosystem. [link](https://www.tidymodels.org/find/parsnip/#models)
+
+#### Python
+
+scikit-learn in Python. [link](https://scikit-learn.org/stable/)
+
+#### Julia
+
+Supported models in Julia MLJ ecosystem. [link](https://alan-turing-institute.github.io/MLJ.jl/dev/model_browser/#Model-Browser)
+:::
+
+## Elastic-net (enet) regularization and shrinkage methods
+
+The subset selection methods such as best subset selection, forward stepwise selection, and backward stepwise selection have some limitations. They are computationally expensive and can lead to overfitting. Shrinkage methods are an alternative approach to subset selection. we fit a model containing all p predictors using a technique that constrains or regularizes the coefficient estimates, or equivalently, that shrinks the coefficient estimates towards zero. It may not be immediately obvious why such a constraint should improve the fit, but it turns out that shrinking the coefficient estimates can significantly reduce their variance. The two best-known techniques for shrinking the regression coefficients towards zero are ridge regression and the lasso.
+
+-   In logistic regression, for **ridge regression** ($L_2$ penalty), we need to optimize the following objective function: $$
+    \ell^*(\boldsymbol\beta) = \ell(\boldsymbol\beta) - \lambda \sum_{j=1}^{p} \beta_j^2,
+    $$ where the penalty term is $\lambda \sum_{j=1}^{p} \beta_j^2$.
+
+-   For the **lasso** ($L_1$ penalty), we need to optimize the following objective function: $$
+    \ell^*(\boldsymbol\beta) = \ell(\boldsymbol\beta) - \lambda \sum_{j=1}^{p} |\beta_j|,
+    $$ where the penalty term is $\lambda \sum_{j=1}^{p} |\beta_j|$.
+
+-   The **elastic net** combines the ridge and lasso penalties, and the penalty term is $\lambda \left( \alpha \sum_{j=1}^{p} |\beta_j| + \frac{1 - \alpha}{2} \sum_{j=1}^{p} \beta_j^2 \right)$, where $\alpha$ controls the relative weight of the two penalties.
+
+<p align="center">
+
+<img src="./shrink.jpg" width="700"/>
+
+</p>
+
+Implementing ridge regression and the lasso requires a method for selecting a value for the tuning parameter $\lambda$ (and $\alpha$ if we use elastic net). Cross-validation provides a simple way to tackle this problem. We choose a grid of tuning parameters values, and compute the cross-validation error for each value of tuning parameters. We then select the tuning parameters value for which the cross-validation error is smallest. Finally, the model is re-fit using all of the available observations and the selected value of the tuning parameter.
+
+## Logistic regression (with enet regularization) workflow
+
+![Machine learning workflow](resampling.svg){fig-align="center" width="75%"}
+
+### Initial split into test and non-test sets
+
+We randomly split the data into 25% test data and 75% non-test data. Stratify on food security status.
+
+```{r}
+# For reproducibility
+set.seed(2024)
+
+data_split <- data_clean |>
+  initial_split(
+  # stratify by HRFS12M1_binary
+  strata = "HRFS12M1_binary", 
+  prop = 0.75
+  )
+data_split
+
+data_other <- training(data_split)
+dim(data_other)
+
+data_test <- testing(data_split)
+dim(data_test)
+```
+
+### Recipe
+
+Recipe for preprocessing the data:
+
+```{r}
+recipe <- recipe(
+    HRFS12M1_binary ~ .,
+    data = data_other
+  ) |>
+  # remove the weights and original HRFS12M1
+  step_rm(HHSUPWGT, HRFS12M1) |>
+  # create dummy variables for categorical predictors
+  step_dummy(all_nominal_predictors()) |>
+  # zero-variance filter
+  step_zv(all_numeric_predictors()) |> 
+  # center and scale numeric data
+  step_normalize(all_numeric_predictors()) |>
+  # estimate the means and standard deviations
+  print()
+```
+
+### Model
+
+```{r}
+logit_mod <- logistic_reg(
+    penalty = tune(), # \lambda
+    mixture = tune()  # \alpha
+  ) |> 
+  set_engine("glmnet", standardize = FALSE) |>
+  print()
+```
+
+### Workflow
+
+```{r}
+train_weight <- round(data_other$HHSUPWGT / 1000, 0)
+train_weight <- ifelse(train_weight == 0, 1, train_weight)
+
+logit_wf <- workflow() |>
+  #add_case_weights(train_weight) |>
+  add_recipe(recipe) |>
+  add_model(logit_mod) |>
+  print()
+```
+
+### Tuning grid
+
+```{r}
+param_grid <- grid_regular(
+  penalty(range = c(-3, 3)), # \lambda
+  mixture(), # \alpha
+  levels = c(1000, 5)
+  ) |>
+  print()
+```
+
+### Cross-validation (CV)
+
+Set cross-validation partitions.
+
+```{r}
+set.seed(2024)
+
+(folds <- vfold_cv(data_other, v = 5))
+```
+
+Fit cross-validation.
+
+```{r}
+(logit_fit <- logit_wf |>
+  tune_grid(
+    resamples = folds,
+    grid = param_grid,
+    metrics = metric_set(roc_auc, accuracy)
+    )) |>
+  system.time()
+```
+
+Visualize CV results:
+
+```{r}
+logit_fit |>
+  # aggregate metrics from K folds
+  collect_metrics() |>
+  print(width = Inf) |>
+  filter(.metric == "roc_auc") |>
+  ggplot(mapping = aes(
+    x = penalty, 
+    y = mean, 
+    color = factor(mixture)
+    )) +
+  geom_point() +
+  labs(x = "Penalty", y = "CV AUC") +
+  scale_x_log10()
+```
+
+Show the top 5 models.
+
+```{r}
+logit_fit |>
+  show_best(metric = "roc_auc")
+```
+
+Let’s select the best model.
+
+```{r}
+best_logit <- logit_fit |>
+  select_best(metric = "roc_auc")
+best_logit
+```
+
+### Final model
+
+```{r}
+# Final workflow
+final_wf <- logit_wf |>
+  finalize_workflow(best_logit)
+final_wf
+```
+
+```{r}
+# Fit the whole training set, then predict the test cases
+final_fit <- final_wf |>
+  last_fit(data_split)
+final_fit
+```
+
+```{r}
+# Test metrics
+final_fit |> 
+  collect_metrics()
+```
+
+## Feedback
+
+```{=html}
+<iframe src="https://app.sli.do/event/aGHTYktNjhMJFDCe92w9Rt/embed/polls/994db4eb-3af7-4f04-b710-7bb082c7f320" width="75%" height="400" data-external="1"></iframe>
+```
+[Slido](https://app.sli.do/event/aGHTYktNjhMJFDCe92w9Rt/embed/polls/994db4eb-3af7-4f04-b710-7bb082c7f320)
