@@ -26,11 +26,11 @@ Run tutorials in Jupyter notebooks (can be slow): <a href="https://mybinder.org/
 
 | Time          | Topic            | Instructor          |
 |:----------------------|:------------------------|:------------------------|
-| 8:30a-10:10a  | Predictive modeling (random forest) \[<a href="https://nih-r25-modelersandstorytellers.github.io/2025/data-science-tutorials/04-rf/rf.html" target="_blank">tutorial</a>\], Predictive modeling (food recognition) \[<a href="https://nih-r25-modelersandstorytellers.github.io/2025/data-science-tutorials/07-foodimg/foodimg.html" target="_blank">tutorial</a>\] | Dr. Hua Zhou |
+| 8:30a-10:10a  | Predictive modeling (random forest) \[<a href="https://nih-r25-modelersandstorytellers.github.io/2025/data-science-tutorials/04-rf/rf.html" target="_blank">tutorial</a>\] | Dr. Hua Zhou |
 | 10:10a-10:20a | Break  |                     |
-| 10:20a-11:50a | Policy evaluation by DML \[<a href="https://nih-r25-modelersandstorytellers.github.io/2025/data-science-tutorials/05-dml/dml.html" target="_blank">tutorial</a>\] | Dr. Hua Zhou |
+| 10:20a-11:50a | Predictive modeling (food recognition) \[<a href="https://nih-r25-modelersandstorytellers.github.io/2025/data-science-tutorials/07-foodimg/foodimg.html" target="_blank">tutorial</a>\] | Dr. Hua Zhou |
 | 11:50a-12:20p  | Lunch Break  |                     |
-| 12:20p-1:50p   | TBD  | Dr. Hua Zhou |
+| 12:20p-1:50p   | Policy evaluation by DML \[<a href="https://nih-r25-modelersandstorytellers.github.io/2025/data-science-tutorials/05-dml/dml.html" target="_blank">tutorial</a>\]  | Dr. Hua Zhou |
 | 1:50p-2:00p   | Break |  |
 | 2:00p-2:30p   | Wrap-up & Closing & Group Work | Emily Abrahams |
 
