@@ -165,7 +165,7 @@ data_clean <- read_rds("../02-wrangle/fss21.rds") |>
 
 ```{r}
 # For reproducibility
-set.seed(2024)
+set.seed(2025)
 
 data_split <- initial_split(
   data_clean, 
@@ -240,7 +240,7 @@ param_grid
 Set cross-validation partitions.
 
 ```{r}
-set.seed(2024)
+set.seed(2025)
 
 folds <- vfold_cv(data_other, v = 5)
 folds
@@ -249,7 +249,7 @@ folds
 Fit cross-validation.
 
 ```{r}
-set.seed(2024)
+set.seed(2025)
 
 (rf_fit <- rf_wf |>
   tune_grid(

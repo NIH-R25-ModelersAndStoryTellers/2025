@@ -361,7 +361,7 @@ We randomly split the data into 25% test data and 75% non-test data. Stratify on
 
 ```{r}
 # For reproducibility
-set.seed(2024)
+set.seed(2025)
 
 data_split <- data_clean |>
   initial_split(
@@ -439,7 +439,7 @@ param_grid <- grid_regular(
 Set cross-validation partitions.
 
 ```{r}
-set.seed(2024)
+set.seed(2025)
 
 (folds <- vfold_cv(data_other, v = 5))
 ```
